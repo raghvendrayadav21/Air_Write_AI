@@ -1,0 +1,47 @@
+# AirWrite AI – .gitignore
+
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+*.spec
+
+# ── Virtual environments ──────────────────────────────────────────────────────
+.venv/
+venv/
+env/
+ENV/
+
+# ── Model weights (large files) ───────────────────────────────────────────────
+*.h5
+*.keras
+*.pb
+!model/airwrite_model.h5
+!model/training_history.png
+
+# ── Screenshots and saved drawings ───────────────────────────────────────────
+screenshots/*.png
+screenshots/*.jpg
+
+# ── IDE / OS ──────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── TensorFlow / Keras logs ───────────────────────────────────────────────────
+logs/
+*.tfevents.*
+tf_model/
+
+# ── TensorFlow Datasets cache ─────────────────────────────────────────────────
+~/tensorflow_datasets/
