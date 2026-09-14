@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: airwrite-ai
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn server:app
+    envVars:
+      - key: FLASK_DEBUG
+        value: "0"
+      - key: PORT
+        value: "10000"

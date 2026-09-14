@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AirWrite AI – Write in the Air, Recognize with AI</title>
+  <meta name="description" content="AirWrite AI uses your webcam and hand gestures to let you write letters and words in the air, recognized in real time by a CNN model." />
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+
+  <!-- MediaPipe Hands (CDN) -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+  <link rel="stylesheet" href="/static/css/style.css" />
+</head>
+<body>
+
+  <!-- ── Header ──────────────────────────────────────────────────────────── -->
+  <header class="header">
+    <div class="header-inner">
+      <div class="logo">
+        <span class="logo-icon">✍️</span>
+        <span class="logo-text">AirWrite <span class="logo-accent">AI</span></span>
+      </div>
+      <div class="header-sub">Write in the Air · Recognize with AI</div>
+      <div class="model-status" id="modelStatus">
+        <span class="status-dot" id="statusDot"></span>
+        <span id="statusText">Connecting…</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- ── Main layout ─────────────────────────────────────────────────────── -->
+  <main class="layout">
+
+    <!-- LEFT: Camera + hand tracking -->
+    <section class="panel panel-camera" aria-label="Live Camera Feed">
+      <div class="panel-header">
+        <h2 class="panel-title">📷 Camera</h2>
+        <div class="gesture-badge" id="gestureBadge">🤚 NONE</div>
+      </div>
+
+      <div class="camera-container">
+        <!-- Hidden video element used by MediaPipe -->
+        <video id="inputVideo" class="hidden" autoplay playsinline muted></video>
+        <!-- Canvas where we draw the annotated camera feed -->
+        <canvas id="cameraCanvas" class="camera-canvas"></canvas>
+        <div class="camera-overlay" id="cameraOverlay">
+          <div class="camera-spinner"></div>
+          <p>Starting camera…</p>
+        </div>
+      </div>
+
+      <!-- Gesture guide -->
+      <div class="gesture-guide">
+        <div class="gesture-item">
+          <span class="gesture-icon">☝️</span>
+          <span>Index up → <strong>Draw</strong></span>
+        </div>
+        <div class="gesture-item">
+          <span class="gesture-icon">✌️</span>
+          <span>Two fingers → <strong>Pause</strong></span>
+        </div>
+        <div class="gesture-item">
+          <span class="gesture-icon">👍</span>
+          <span>Thumb up → <strong>Predict</strong></span>
+        </div>
+        <div class="gesture-item">
+          <span class="gesture-icon">✊</span>
+          <span>Fist → <strong>Clear</strong></span>
+        </div>
+      </div>
+    </section>
+
+    <!-- CENTER: Air canvas -->
+    <section class="panel panel-canvas" aria-label="Air Writing Canvas">
+      <div class="panel-header">
+        <h2 class="panel-title">🖊️ Canvas</h2>
+        <div class="canvas-controls">
+          <button class="btn btn-ghost" id="btnClear" title="Clear canvas (or make a fist)">
+            🗑️ Clear
+          </button>
+          <button class="btn btn-primary" id="btnPredict" title="Predict (or thumbs up)">
+            ⚡ Predict
+          </button>
+        </div>
+      </div>
+
+      <div class="canvas-wrapper">
+        <canvas id="airCanvas" class="air-canvas" width="560" height="420"></canvas>
+        <div class="canvas-hint" id="canvasHint">
+          Point your index finger at the camera to start drawing
+        </div>
+      </div>
+
+      <!-- Stroke thickness slider -->
+      <div class="canvas-toolbar">
+        <label class="toolbar-label" for="strokeSize">Stroke</label>
+        <input type="range" id="strokeSize" min="4" max="24" value="10" class="slider" />
+        <span class="toolbar-value" id="strokeSizeVal">10px</span>
+        <div class="color-swatches">
+          <button class="swatch active" data-color="#ffffff" style="background:#ffffff" title="White"></button>
+          <button class="swatch" data-color="#00f5ff" style="background:#00f5ff" title="Cyan"></button>
+          <button class="swatch" data-color="#a855f7" style="background:#a855f7" title="Purple"></button>
+          <button class="swatch" data-color="#f97316" style="background:#f97316" title="Orange"></button>
+          <button class="swatch" data-color="#22c55e" style="background:#22c55e" title="Green"></button>
+        </div>
+      </div>
+    </section>
+
+    <!-- RIGHT: Results panel -->
+    <section class="panel panel-results" aria-label="Recognition Results">
+      <div class="panel-header">
+        <h2 class="panel-title">🧠 Recognition</h2>
+      </div>
+
+      <!-- Main prediction card -->
+      <div class="result-card" id="resultCard">
+        <div class="result-idle" id="resultIdle">
+          <div class="idle-icon">👋</div>
+          <p>Draw a letter or word, then use 👍 or click <strong>Predict</strong></p>
+        </div>
+
+        <div class="result-content hidden" id="resultContent">
+          <div class="predicted-word" id="predictedWord">—</div>
+          <div class="suggested-row" id="suggestedRow">
+            <span class="suggested-label">Suggested:</span>
+            <span class="suggested-word" id="suggestedWord"></span>
+          </div>
+          <div class="confidence-bar-wrap">
+            <div class="confidence-bar-track">
+              <div class="confidence-bar-fill" id="confBar"></div>
+            </div>
+            <span class="confidence-pct" id="confPct">0%</span>
+          </div>
+        </div>
+
+        <div class="result-loading hidden" id="resultLoading">
+          <div class="loading-ring"></div>
+          <p>Analyzing…</p>
+        </div>
+
+        <div class="result-error hidden" id="resultError">
+          <div class="error-icon">⚠️</div>
+          <p id="errorMsg">Something went wrong.</p>
+        </div>
+      </div>
+
+      <!-- Per-character breakdown -->
+      <div class="chars-section" id="charsSection">
+        <h3 class="section-heading">Character Breakdown</h3>
+        <div class="chars-list" id="charsList"></div>
+      </div>
+
+      <!-- Top-3 alternatives -->
+      <div class="top3-section" id="top3Section">
+        <h3 class="section-heading">Top Alternatives</h3>
+        <div class="top3-list" id="top3List"></div>
+      </div>
+
+      <!-- History -->
+      <div class="history-section">
+        <div class="history-header">
+          <h3 class="section-heading">History</h3>
+          <button class="btn btn-ghost btn-sm" id="btnClearHistory">Clear</button>
+        </div>
+        <div class="history-list" id="historyList">
+          <p class="history-empty">No predictions yet</p>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ── Status bar ───────────────────────────────────────────────────────── -->
+  <footer class="statusbar">
+    <span id="fps">FPS: –</span>
+    <span id="handStatus">No hand detected</span>
+    <span id="canvasInfo">Canvas: empty</span>
+    <span>AirWrite AI · Web Edition</span>
+  </footer>
+
+  <script src="/static/js/app.js"></script>
+</body>
+</html>
