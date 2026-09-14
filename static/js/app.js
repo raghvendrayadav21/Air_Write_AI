@@ -441,27 +441,44 @@ function initMediaPipe() {
   });
 
   hands.onResults(onHandResults);
-  mediaPipeReady = true;
 
-  // ── Draw loop: requestAnimationFrame — always smooth, never blocked ─────────
-  // This draws the video feed + landmarks at the browser's native framerate.
-  // It NEVER calls hands.send(), so MediaPipe can never hang it.
+  // ── Draw loop: requestAnimationFrame ─────────────────────────────────────────
+  // Draws video + landmarks continuously. NEVER calls hands.send().
   function drawLoop() {
     if (latestFrame) drawCameraFrame(latestFrame);
     requestAnimationFrame(drawLoop);
   }
   requestAnimationFrame(drawLoop);
 
-  // ── MediaPipe loop: runs every 100ms (≈10fps) independently ─────────────────
-  // Completely separate from the draw loop.
-  // If MediaPipe is still processing the previous frame, we skip.
-  setInterval(() => {
-    if (!latestFrame || !mediaPipeReady) return;
-    mediaPipeReady = false;   // mark busy
-    hands.send({ image: latestFrame }).finally(() => {
-      mediaPipeReady = true;  // mark free when done
-    });
-  }, 100);  // 10 fps for hand detection — smooth enough, much lighter
+  // ── MediaPipe loop: setTimeout CHAIN (not setInterval) ───────────────────────
+  // Next call scheduled ONLY after previous one COMPLETES + 200ms rest.
+  // This prevents WASM from blocking main thread back-to-back.
+  let mpSnapshot = null;
+
+  function runMediaPipe() {
+    if (!latestFrame || latestFrame.videoWidth === 0) {
+      setTimeout(runMediaPipe, 200);
+      return;
+    }
+    // Snapshot to a small canvas: 320x240 = 4x fewer pixels to process
+    if (!mpSnapshot) {
+      mpSnapshot = document.createElement('canvas');
+      mpSnapshot.width  = 320;
+      mpSnapshot.height = 240;
+    }
+    const sCtx = mpSnapshot.getContext('2d');
+    sCtx.drawImage(latestFrame, 0, 0, 320, 240);
+
+    hands.send({ image: mpSnapshot })
+      .catch(() => {})
+      .finally(() => {
+        // Wait 200ms AFTER completion, then schedule next
+        setTimeout(runMediaPipe, 200);
+      });
+  }
+
+  // Start after 800ms (let camera warm up first)
+  setTimeout(runMediaPipe, 800);
 
   // ── Camera: just captures frames into latestFrame ────────────────────────────
   const camera = new Camera(inputVideo, {
