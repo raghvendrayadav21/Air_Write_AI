@@ -165,9 +165,9 @@ function classifyGesture(lm, handSide) {
 function getIndexTipCanvas(lm) {
   if (!lm || lm.length <= INDEX_TIP) return null;
   const tip = lm[INDEX_TIP];
-  // MediaPipe gives normalized [0,1] coords; map to air canvas pixel space
-  // Note: webcam is mirrored, so x is already flipped
-  const x = tip.x * airCanvas.width;
+  // Camera is displayed MIRRORED (camCtx.scale(-1,1))
+  // So we must also mirror x for the air canvas to match
+  const x = (1 - tip.x) * airCanvas.width;   // ✅ mirrored
   const y = tip.y * airCanvas.height;
   return { x, y };
 }
