@@ -88,6 +88,9 @@ let handedness    = 'Right';       // Detected hand handedness
 
 let fpsCounter    = 0;
 let fpsTime       = performance.now();
+let frameCount    = 0;             // For frame skipping
+const MEDIAPIPE_SKIP = 2;          // Run MediaPipe every Nth frame only
+let canvasSized    = false;        // Flag: camera canvas dimensions set once
 
 let canvasHasStrokes = false;      // Whether the canvas has any drawing
 
@@ -339,21 +342,31 @@ function renderHistory() {
 // ── Camera overlay drawing ────────────────────────────────────────────────────
 
 function drawCameraFrame(videoEl) {
-  cameraCanvas.width  = videoEl.videoWidth  || 640;
-  cameraCanvas.height = videoEl.videoHeight || 480;
+  const vw = videoEl.videoWidth  || 640;
+  const vh = videoEl.videoHeight || 480;
+
+  // Set canvas size only ONCE to avoid flickering/hang on every frame
+  if (!canvasSized && vw > 0) {
+    cameraCanvas.width  = vw;
+    cameraCanvas.height = vh;
+    canvasSized = true;
+  }
+
+  // Clear only the drawing area (do NOT reset .width/.height)
+  camCtx.clearRect(0, 0, cameraCanvas.width, cameraCanvas.height);
 
   // Mirror the feed
   camCtx.save();
   camCtx.translate(cameraCanvas.width, 0);
   camCtx.scale(-1, 1);
-  camCtx.drawImage(videoEl, 0, 0);
+  camCtx.drawImage(videoEl, 0, 0, cameraCanvas.width, cameraCanvas.height);
   camCtx.restore();
 
   if (handLandmarks) {
     drawHandLandmarks(handLandmarks);
   }
 
-  // FPS
+  // FPS counter
   fpsCounter++;
   const now = performance.now();
   if (now - fpsTime >= 1000) {
@@ -428,8 +441,15 @@ function initMediaPipe() {
 
   const camera = new Camera(inputVideo, {
     onFrame: async () => {
-      await hands.send({ image: inputVideo });
+      frameCount++;
+
+      // Always draw the camera feed for smooth video
       drawCameraFrame(inputVideo);
+
+      // Run MediaPipe only every MEDIAPIPE_SKIP frames to prevent hang
+      if (frameCount % MEDIAPIPE_SKIP === 0) {
+        await hands.send({ image: inputVideo });
+      }
     },
     width: 640,
     height: 480,
