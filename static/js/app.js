@@ -88,9 +88,10 @@ let handedness    = 'Right';       // Detected hand handedness
 
 let fpsCounter    = 0;
 let fpsTime       = performance.now();
-let frameCount    = 0;             // For frame skipping
-const MEDIAPIPE_SKIP = 2;          // Run MediaPipe every Nth frame only
-let canvasSized    = false;        // Flag: camera canvas dimensions set once
+let frameCount    = 0;
+let canvasSized    = false;        // camera canvas dimensions set once
+let mediaPipeReady = false;        // flag: mediapipe not busy
+let latestFrame    = null;         // latest video element ref for MP processing
 
 let canvasHasStrokes = false;      // Whether the canvas has any drawing
 
@@ -430,26 +431,42 @@ function initMediaPipe() {
       `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`,
   });
 
+  // modelComplexity 0 = fast (less CPU), 1 = accurate (heavy)
+  // Use 0 to prevent hang on CPU-only devices
   hands.setOptions({
     maxNumHands: 1,
-    modelComplexity: 1,
-    minDetectionConfidence: 0.6,
-    minTrackingConfidence: 0.5,
+    modelComplexity: 0,
+    minDetectionConfidence: 0.55,
+    minTrackingConfidence: 0.45,
   });
 
   hands.onResults(onHandResults);
+  mediaPipeReady = true;
 
+  // ── Draw loop: requestAnimationFrame — always smooth, never blocked ─────────
+  // This draws the video feed + landmarks at the browser's native framerate.
+  // It NEVER calls hands.send(), so MediaPipe can never hang it.
+  function drawLoop() {
+    if (latestFrame) drawCameraFrame(latestFrame);
+    requestAnimationFrame(drawLoop);
+  }
+  requestAnimationFrame(drawLoop);
+
+  // ── MediaPipe loop: runs every 100ms (≈10fps) independently ─────────────────
+  // Completely separate from the draw loop.
+  // If MediaPipe is still processing the previous frame, we skip.
+  setInterval(() => {
+    if (!latestFrame || !mediaPipeReady) return;
+    mediaPipeReady = false;   // mark busy
+    hands.send({ image: latestFrame }).finally(() => {
+      mediaPipeReady = true;  // mark free when done
+    });
+  }, 100);  // 10 fps for hand detection — smooth enough, much lighter
+
+  // ── Camera: just captures frames into latestFrame ────────────────────────────
   const camera = new Camera(inputVideo, {
     onFrame: async () => {
-      frameCount++;
-
-      // Always draw the camera feed for smooth video
-      drawCameraFrame(inputVideo);
-
-      // Run MediaPipe only every MEDIAPIPE_SKIP frames to prevent hang
-      if (frameCount % MEDIAPIPE_SKIP === 0) {
-        await hands.send({ image: inputVideo });
-      }
+      latestFrame = inputVideo;  // just store reference — no processing here
     },
     width: 640,
     height: 480,
